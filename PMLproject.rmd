@@ -1,0 +1,89 @@
+---
+title: "Practical Machine Learning Project"
+author: "bdata7"
+date: "September 24, 2017"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Overview
+
+The purpose of this project is to use data from accelerometers placed on the belt, forearm, arm and dumbell of subjects to predict the manner in which the participant performed a particular exercise.  
+
+In this report, a Random Forest model will be created and applied to make predictions about the data.
+
+## Read the Data into R
+
+First, lets load the data into R. (Only the training dataset will be analyzed here; predictions will be made on the test dataset using the Random Forest model in a subsequent prediction quiz.)
+
+```{r chunk1, echo=TRUE}
+training <- read.csv(url('https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv'))
+testing <- read.csv(url('https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv'))
+```
+
+## Prepare the data for modeling
+
+Next, working only with the training dataset, the relevant data will be downselected and columns with NAs will be removed.
+
+```{r chunk2, echo=TRUE}
+subsetTraining <- training[,-(1:7)]
+subsetTraining <- subsetTraining[sapply(subsetTraining, function(x) !any(is.na(x)))]
+```
+
+Then, predictors with near zero variance are removed.
+
+```{r chunk3, echo=TRUE,warning=FALSE}
+library(caret)
+isNZV <- nearZeroVar(subsetTraining)
+subsetTraining <- subsetTraining[,-isNZV]
+```
+
+## Partition Training Data into Training and Test Sets
+
+The training data is then split into a training dataset (70%) and a test dataset (30%).
+
+```{r chunk4, echo=TRUE}
+set.seed(1234)
+inTrain <- createDataPartition(subsetTraining$classe,p=0.7,list=FALSE)
+trainData <- subsetTraining[inTrain,]
+testData <- subsetTraining[-inTrain,]
+```
+
+## Fit a Random Forest Model to the Training Dataset
+
+Using the randomForest library, a Random Forest model will be fit to the training dataset.  To speed up computational processing speed, the parallel and doParallel packages are used to pull in additional cores from the computer creating the Random Forest model.
+
+Aside from the removal of near zero variance predictors (above), no additional preprocessing of the data was performed prior to creating the model. (This is one of the advantages to working with a Random Forest model - little or no preprocessing is generally needed.)
+
+```{r chunk5, echo=TRUE,warning=FALSE}
+library(randomForest)
+library(foreach)
+library(parallel)
+library(doParallel)
+c1 <- makeCluster(detectCores()-1)
+registerDoParallel(c1)
+rfModel <- randomForest(classe~.,
+                        data=trainData,
+                        importance=TRUE,
+                        ntree=500)
+stopCluster(c1)
+registerDoSEQ()
+```
+
+## Confusion Matrix
+
+Using the other 30% of the training data that was set aside as a 'test dataset', one can determine how accurate the model is via a confusion matrix.
+
+```{r chunk6, echo=TRUE}
+rfPred <- predict(rfModel,testData)
+confusionMatrix(rfPred,testData$classe)
+```
+
+## Conclusion
+
+The Random Forest model can be used to give yield very accurate results (Balanced Accuracy > 0.99 for all 5 classes).  No cross-validation or other pre-processing measures were used or needed, except for the removal of near zero variance predictors.  Since the training data was partitioned such that only 70% of the data was used to build the model, the confusion matrix (testing the model against the 30% of data that was not used) suggests the expected out-of-sample error is < 1%.
